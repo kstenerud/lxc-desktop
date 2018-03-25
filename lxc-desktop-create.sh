@@ -120,7 +120,10 @@ function prepare_options {
     fi
 }
 
-function configure_container {
+function create_container {
+    echo "Creating LXC $DESKTOP_KEY desktop from $SOURCE_IMAGE"
+    lxc init images:$SOURCE_IMAGE $CONTAINER_NAME -s $STORAGE_POOL
+
     if [ "$IS_PRIVILEGED" = true ]; then
         lxc config set $CONTAINER_NAME security.privileged true
     fi
@@ -162,14 +165,21 @@ function install_x2go {
     install_package x2goserver x2goserver-xsession
 }
 
-function create_container {
-    echo "Creating LXC $DESKTOP_KEY desktop from $SOURCE_IMAGE"
+function install_chrome_remote_desktop {
+    container_exec wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+    container_exec apt install -y ./google-chrome-stable_current_amd64.deb
+    container_exec rm google-chrome-stable_current_amd64.deb
+    container_exec wget -q https://dl.google.com/linux/direct/chrome-remote-desktop_current_amd64.deb
+    container_exec apt install -y ./chrome-remote-desktop_current_amd64.deb
+    container_exec rm chrome-remote-desktop_current_amd64.deb
+}
 
-    lxc init images:$SOURCE_IMAGE $CONTAINER_NAME -s $STORAGE_POOL
-    configure_container
+function build_container {
+    create_container
     fix_bluetooth
     install_desktop
     install_x2go
+    install_chrome_remote_desktop
 
     if [ "$CREATE_BASELINE_SNAPSHOT" = true ]; then
         echo "Creating baseline snaphot"
@@ -226,4 +236,4 @@ prepare_options
 
 set -eu
 
-create_container
+build_container
