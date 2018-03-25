@@ -1,7 +1,18 @@
 #!/bin/bash
 
-#IMAGE=ubuntu/xenial
-IMAGE=ubuntu/bionic
+# =============
+# Configuration
+# =============
+
+#SOURCE_IMAGE=ubuntu/xenial
+SOURCE_IMAGE=ubuntu/bionic
+USERNAME=ubuntu
+STORAGE_POOL=default
+CONTAINER_NAME=
+PASSWORD=
+HOME_MOUNT=
+IS_PRIVILEGED=false
+CREATE_BASELINE_SNAPSHOT=false
 
 declare -A DESKTOPS
 declare -a DESKTOP_KEYS
@@ -9,7 +20,6 @@ function add_desktop {
     DESKTOPS[$1]=$2
     DESKTOP_KEYS+=( $1 )
 }
-
 add_desktop budgie   ubuntu-budgie-desktop
 add_desktop cinnamon cinnamon-desktop-environment
 add_desktop gnome    ubuntu-gnome-desktop
@@ -20,6 +30,12 @@ add_desktop ubuntu   ubuntu-desktop
 add_desktop unity    ubuntu-unity-desktop
 add_desktop xfce     xubuntu-desktop
 add_desktop all      ${DESKTOPS[*]}
+
+
+
+# =========
+# Functions
+# =========
 
 error() {
     set +eu
@@ -35,49 +51,43 @@ error() {
 }
 trap 'error ${LINENO}' ERR
 
-DESKTOP_KEY=$1
-DESKTOP_PACKAGE=${DESKTOPS[$DESKTOP_KEY]}
-CONTAINER=$2
-USERNAME=$3
-PASSWORD=$4
-
 function list_desktops {
-    echo "Desktop types:"
     for i in "${!DESKTOP_KEYS[@]}"; do echo "    ${DESKTOP_KEYS[$i]}"; done
 }
 
-if [ -z $CONTAINER ]; then
-    echo "Creates a new LXC desktop container"
+function show_help {
+    echo "Create a new LXC desktop container"
     echo
-    echo "Usage: $0 <desktop type> <container name> [new user [password]]"
+    echo "Usage: $0 [options] <desktop type>"
     echo
-    echo "container name: What to name the container"
-    echo "new user: If set, delete the default user \"ubuntu\" from the base $IMAGE image and create a new admin user"
-    echo "password: The password to give the new user (default: same as user name)"
+    echo "Desktop types: "
     list_desktops
     echo
-    echo "Note: The default ubuntu image has an exiting user \"ubuntu\""
-    exit 1
-fi
-
-if [ -z $DESKTOP_PACKAGE ]; then
-	echo "$DESKTOP_KEY: unknown desktop type"
-	echo
-	list_desktops
-	exit 1
-fi
-
-if [ -z $USERNAME ]; then
-    USERNAME=
-fi
-if [ -z $PASSWORD ]; then
-    PASSWORD=$USERNAME
-fi
-
-set -eu
+    echo "Options:"
+    echo "    -?: Show this help screen."
+    echo "    -u <username>: The desktop username to create (default ubuntu)."
+    echo "    -p <password>: The password for the desktop user (default same as username)."
+    echo "    -n <name>: The container's name (default same as desktop type)."
+    echo "    -h <path>: Mount an external directory as the user's home directory."
+    echo "    -s <pool>: Use the specified storage pool (default \"default\")."
+    echo "    -S: Create a baseline snapshot of the container."
+    echo "    -i <image>: The source image to build the container from - only ubuntu images will work (default ubuntu/bionic)."
+}
 
 function container_exec {
-    lxc exec $CONTAINER -- $@
+    lxc exec $CONTAINER_NAME -- $@
+}
+
+function create_user {
+    username=$1
+    password=$2
+    echo "Creating user $username"
+    lxc exec $CONTAINER_NAME -- useradd --create-home --shell /bin/bash --user-group --groups adm,sudo --password $(openssl passwd -1 -salt xyz "$password") $username
+}
+
+function delete_user {
+    username=$1
+    container_exec userdel -r $username
 }
 
 function install_package {
@@ -88,40 +98,132 @@ function install_package {
     fi
     set -u
 
-    lxc exec $CONTAINER -- bash -c "(export DEBIAN_FRONTEND=noninteractive; apt install -y $package)"
+    lxc exec $CONTAINER_NAME -- bash -c "(export DEBIAN_FRONTEND=noninteractive; apt install -y $package)"
+}
+
+function prepare_options {
+    DESKTOP_PACKAGE=${DESKTOPS[$DESKTOP_KEY]}
+    if [ -z $DESKTOP_PACKAGE ]; then
+        echo "$DESKTOP_KEY: unknown desktop type"
+        echo
+        echo "Recognized desktop types:"
+        list_desktops
+        exit 1
+    fi
+
+    if [ -z $PASSWORD ]; then
+        PASSWORD=$USERNAME
+    fi
+
+    if [ -z $CONTAINER_NAME ]; then
+        CONTAINER_NAME=$DESKTOP_KEY
+    fi
+}
+
+function configure_container {
+    if [ "$IS_PRIVILEGED" = true ]; then
+        lxc config set $CONTAINER_NAME security.privileged true
+    fi
+
+    lxc network attach br0 $CONTAINER_NAME default eth0
+
+    # Fix to make dbus work correctly on non-privileged containers
+    lxc config device add $CONTAINER_NAME fuse unix-char major=10 minor=229 path=/dev/fuse
+
+    lxc start $CONTAINER_NAME
+    delete_user ubuntu
+    create_user $USERNAME "$PASSWORD"
+
+    if ! [ -z $HOME_MOUNT ]; then
+        echo "Mounting home directory /home/$USERNAME from $HOME_MOUNT"
+        lxc config device add $CONTAINER_NAME shareName disk source="$HOME_MOUNT" path=/home/$USERNAME
+        container_exec chown $USERNAME:$USERNAME /home/$USERNAME
+    fi
+}
+
+function fix_bluetooth {
+    # Force bluetooth to install and then disable it so that it doesn't break the rest of the install.
+    set +e
+    install_package bluez
+    set -e
+    container_exec systemctl disable bluetooth
+    install_package
+}
+
+function install_desktop {
+    install_package $DESKTOP_PACKAGE
+    container_exec apt remove -y light-locker
+}
+
+function install_x2go {
+    install_package software-properties-common
+    container_exec add-apt-repository -y ppa:x2go/stable
+    container_exec apt update
+    install_package x2goserver x2goserver-xsession
+}
+
+function create_container {
+    echo "Creating LXC $DESKTOP_KEY desktop from $SOURCE_IMAGE"
+
+    lxc init images:$SOURCE_IMAGE $CONTAINER_NAME -s $STORAGE_POOL
+    configure_container
+    fix_bluetooth
+    install_desktop
+    install_x2go
+
+    if [ "$CREATE_BASELINE_SNAPSHOT" = true ]; then
+        echo "Creating baseline snaphot"
+        lxc snapshot $CONTAINER_NAME baseline
+    fi
 }
 
 
-echo "Creating LXC $DESKTOP_KEY desktop from $IMAGE named \"$CONTAINER\"..."
 
-lxc init images:$IMAGE $CONTAINER -s default
+# =======
+# Options
+# =======
 
-lxc network attach br0 $CONTAINER default eth0
-# Fix to make dbus work correctly on non-privileged containers
-lxc config device add $CONTAINER fuse unix-char major=10 minor=229 path=/dev/fuse
-lxc start $CONTAINER
+OPTIND=1
+while getopts "?u:p:n:h:Ss:i:" opt; do
+    case "$opt" in
+    \?)
+        show_help
+        exit 0
+        ;;
+    u)  USERNAME=$OPTARG
+        ;;
+    p)  PASSWORD=$OPTARG
+        ;;
+    n)  CONTAINER_NAME=$OPTARG
+        ;;
+    h)  HOME_MOUNT=$OPTARG
+        IS_PRIVILEGED=true
+        ;;
+    S)  CREATE_BASELINE_SNAPSHOT=true
+        ;;
+    s)  STORAGE_POOL=$OPTARG
+        ;;
+    i)  SOURCE_IMAGE=$OPTARG
+        ;;
+    esac
+done
+shift $((OPTIND-1))
+[ "$1" = "--" ] && shift
 
-# Force bluetooth to install and then disable it so that it doesn't break the install.
-set +e
-install_package bluez
-set -e
-container_exec systemctl disable bluetooth
-install_package
-
-install_package software-properties-common
-container_exec add-apt-repository -y ppa:x2go/stable
-container_exec apt update
-install_package x2goserver x2goserver-xsession
-install_package $DESKTOP_PACKAGE
-container_exec apt remove -y light-locker
-
-if ! [ -z $USERNAME ]; then
-    echo "Creating user $USERNAME"
-    lxc exec $CONTAINER -- useradd --create-home --shell /bin/bash --user-group --groups adm,sudo --password $(openssl passwd -1 -salt xyz "$PASSWORD") $USERNAME
-    container_exec userdel ubuntu
-else
-    echo "No new user will be created."
+DESKTOP_KEY=$1
+if [ -z $DESKTOP_KEY ]; then
+    show_help
+    exit 1
 fi
 
-echo "Creating baseline snaphot"
-lxc snapshot $CONTAINER baseline
+prepare_options
+
+
+
+# =======
+# Program
+# =======
+
+set -eu
+
+create_container
