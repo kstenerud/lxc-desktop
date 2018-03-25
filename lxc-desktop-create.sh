@@ -60,18 +60,18 @@ function show_help {
     echo
     echo "Usage: $0 [options] <desktop type>"
     echo
-    echo "Desktop types: "
-    list_desktops
-    echo
     echo "Options:"
     echo "    -?: Show this help screen."
-    echo "    -u <username>: The desktop username to create (default ubuntu)."
-    echo "    -p <password>: The password for the desktop user (default same as username)."
-    echo "    -n <name>: The container's name (default same as desktop type)."
-    echo "    -h <path>: Mount an external directory as the user's home directory."
-    echo "    -s <pool>: Use the specified storage pool (default \"default\")."
+    echo "    -u username: The desktop username to create (default ubuntu)."
+    echo "    -p password: The password for the desktop user (default same as username)."
+    echo "    -n name: The container's name (default same as desktop type)."
+    echo "    -h path: Mount an external directory as the user's home directory."
+    echo "    -s pool: Use the specified storage pool (default \"default\")."
     echo "    -S: Create a baseline snapshot of the container."
-    echo "    -i <image>: The source image to build the container from - only ubuntu images will work (default ubuntu/bionic)."
+    echo "    -i image: The source image to build the container from - only ubuntu images will work (default ubuntu/bionic)."
+    echo
+    echo "Desktop types: "
+    list_desktops
 }
 
 function container_exec {
@@ -174,12 +174,17 @@ function install_chrome_remote_desktop {
     container_exec rm chrome-remote-desktop_current_amd64.deb
 }
 
+function install_other_software {
+    install_package transmission amule
+}
+
 function build_container {
     create_container
     fix_bluetooth
     install_desktop
     install_x2go
     install_chrome_remote_desktop
+    install_other_software
 
     if [ "$CREATE_BASELINE_SNAPSHOT" = true ]; then
         echo "Creating baseline snaphot"

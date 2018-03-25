@@ -9,14 +9,28 @@ You can access the desktop using x2go.
 Usage
 -----
 
-    lxc-dektop-create.sh <desktop type> <container name> [new user [password]]
+    lxc-desktop-create.sh [options] desktop-type
 
-    desktop type: The type of desktop to create (lxde, mate, etc). Type lxc-dektop-create.sh by itelf for a list.
-    container name: What to name the container.
-    new user: If set, delete the default user "ubuntu" from the base image and create a new admin user.
-    password: The password to give the new user (default: same as user name).
+Options:
 
-Notes
------
+ * -?: Show this help screen.
+ * -u username: The desktop username to create (default ubuntu).
+ * -p password: The password for the desktop user (default same as username).
+ * -n name: The container's name (default same as desktop type).
+ * -h path: Mount an external directory as the user's home directory.
+ * -s pool: Use the specified storage pool (default "default").
+ * -S: Create a baseline snapshot of the container.
+ * -i image: The source image to build the container from - only ubuntu images will work (default ubuntu/bionic).
 
-The base ubuntu image has an existing "ubuntu" user. If you specify a new user, "ubuntu" will be deleted and replaced with it.
+Desktop types: 
+
+ * budgie
+ * cinnamon
+ * gnome
+ * kde
+ * lxde
+ * mate
+ * ubuntu
+ * unity
+ * xfce
+
