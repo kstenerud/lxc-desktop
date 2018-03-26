@@ -6,10 +6,12 @@ A script to create a full desktop environment inside a linux container.
 You can access the desktop using x2go.
 
 
+
 Requirements
 ------------
 
 LXC 3.0+
+
 
 
 Usage
@@ -43,8 +45,9 @@ Desktop types:
  * xfce
 
 
+
 The State of Things
-===================
+-------------------
 
 Currently, only the following desktops actually work:
 
