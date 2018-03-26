@@ -24,9 +24,11 @@ Options:
  * -p password: The password for the desktop user (default same as username).
  * -n name: The container's name (default same as desktop type).
  * -h path: Mount an external directory as the user's home directory.
+ * -p: Make a privileged container. Recommended when using -h to avoid ownership issues.
  * -s pool: Use the specified storage pool (default "default").
  * -S: Create a baseline snapshot of the container.
  * -i image: The source image to build the container from - only ubuntu images will work (default ubuntu/bionic).
+ * -b bridge: The bridge to connect the container to as eth0 (default br0).
 
 Desktop types: 
 

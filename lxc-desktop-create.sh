@@ -67,6 +67,7 @@ function show_help {
     echo "    -p password: The password for the desktop user (default same as username)."
     echo "    -n name: The container's name (default same as desktop type)."
     echo "    -h path: Mount an external directory as the user's home directory."
+    echo "    -p: Make a privileged container. Recommended when using -h to avoid ownership issues."
     echo "    -s pool: Use the specified storage pool (default \"default\")."
     echo "    -S: Create a baseline snapshot of the container."
     echo "    -i image: The source image to build the container from - only ubuntu images will work (default ubuntu/bionic)."
@@ -201,7 +202,7 @@ function build_container {
 # =======
 
 OPTIND=1
-while getopts "?u:p:n:h:Ss:i:b:" opt; do
+while getopts "?u:p:n:h:pSs:i:b:" opt; do
     case "$opt" in
     \?)
         show_help
@@ -214,7 +215,8 @@ while getopts "?u:p:n:h:Ss:i:b:" opt; do
     n)  CONTAINER_NAME=$OPTARG
         ;;
     h)  HOME_MOUNT=$OPTARG
-        IS_PRIVILEGED=true
+        ;;
+    p)  IS_PRIVILEGED=true
         ;;
     S)  CREATE_BASELINE_SNAPSHOT=true
         ;;
