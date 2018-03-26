@@ -11,6 +11,7 @@ STORAGE_POOL=default
 CONTAINER_NAME=
 PASSWORD=
 HOME_MOUNT=
+BRIDGE=br0
 IS_PRIVILEGED=false
 CREATE_BASELINE_SNAPSHOT=false
 
@@ -20,7 +21,7 @@ function add_desktop {
     DESKTOPS[$1]=$2
     DESKTOP_KEYS+=( $1 )
 }
-add_desktop budgie   ubuntu-budgie-desktop
+add_desktop budgie   "ubuntu-budgie-desktop gnome-settings-daemon gnome-session"
 add_desktop cinnamon cinnamon-desktop-environment
 add_desktop gnome    ubuntu-gnome-desktop
 add_desktop kde      kubuntu-desktop
@@ -69,6 +70,7 @@ function show_help {
     echo "    -s pool: Use the specified storage pool (default \"default\")."
     echo "    -S: Create a baseline snapshot of the container."
     echo "    -i image: The source image to build the container from - only ubuntu images will work (default ubuntu/bionic)."
+    echo "    -b bridge: The bridge to connect the container to as eth0 (default br0)."
     echo
     echo "Desktop types: "
     list_desktops
@@ -128,7 +130,7 @@ function create_container {
         lxc config set $CONTAINER_NAME security.privileged true
     fi
 
-    lxc network attach br0 $CONTAINER_NAME default eth0
+    lxc network attach $BRIDGE $CONTAINER_NAME default eth0
 
     # Fix to make dbus work correctly on non-privileged containers
     lxc config device add $CONTAINER_NAME fuse unix-char major=10 minor=229 path=/dev/fuse
@@ -199,7 +201,7 @@ function build_container {
 # =======
 
 OPTIND=1
-while getopts "?u:p:n:h:Ss:i:" opt; do
+while getopts "?u:p:n:h:Ss:i:b:" opt; do
     case "$opt" in
     \?)
         show_help
@@ -219,6 +221,8 @@ while getopts "?u:p:n:h:Ss:i:" opt; do
     s)  STORAGE_POOL=$OPTARG
         ;;
     i)  SOURCE_IMAGE=$OPTARG
+        ;;
+    b)  BRIDGE=$OPTARG
         ;;
     esac
 done
