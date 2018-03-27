@@ -93,15 +93,57 @@ function delete_user {
     container_exec userdel -r $username
 }
 
-function install_package {
+function add_repositories {
+    for repo in $@; do
+        container_exec add-apt-repository -y $repo
+    done
+    container_exec apt update
+}
+
+function install_packages {
     set +u
-    package=$1
-    if [ -z $package ]; then
-        package=
+    packages=$@
+    if [ -z "$packages" ]; then
+        packages=
     fi
     set -u
 
-    lxc exec $CONTAINER_NAME -- bash -c "(export DEBIAN_FRONTEND=noninteractive; apt install -y $package)"
+    echo "Installing packages: $packages"
+    lxc exec $CONTAINER_NAME -- bash -c "(export DEBIAN_FRONTEND=noninteractive; apt install -y $packages)"
+}
+
+function install_packages_from_repo {
+    repo=$1
+    shift
+    add_repositories $repo
+    install_packages $@
+}
+
+function install_deb_from_http {
+    url=$1
+    filename=$2
+    tmpfile=/tmp/$filename
+    container_exec wget -qO $tmpfile "$url"
+    install_packages "$tmpfile"
+    container_exec rm "$tmpfile"
+}
+
+function install_packages_from_http_deb {
+    for url in $@; do
+        filename=$(basename $url)
+        install_deb_from_http "$url" "$filename"
+    done
+}
+
+function install_package_from_http_script {
+    url=$1
+    shift
+    filename=$(basename $url)
+    tmpfile=/tmp/$filename
+    container_exec wget -qO $tmpfile "$url"
+    container_exec chmod a+x "$tmpfile"
+    container_exec $tmpfile $@
+    container_exec rm "$tmpfile"
 }
 
 function prepare_options {
@@ -145,49 +187,89 @@ function create_container {
         lxc config device add $CONTAINER_NAME shareName disk source="$HOME_MOUNT" path=/home/$USERNAME
         container_exec chown $USERNAME:$USERNAME /home/$USERNAME
     fi
+
+    install_packages software-properties-common
 }
 
 function fix_bluetooth {
     # Force bluetooth to install and then disable it so that it doesn't break the rest of the install.
     set +e
-    install_package bluez
+    install_packages bluez
     set -e
     container_exec systemctl disable bluetooth
-    install_package
+    install_packages
 }
 
 function install_desktop {
-    install_package $DESKTOP_PACKAGE
+    install_packages $DESKTOP_PACKAGE
     container_exec apt remove -y light-locker
 }
 
-function install_x2go {
-    install_package software-properties-common
-    container_exec add-apt-repository -y ppa:x2go/stable
-    container_exec apt update
-    install_package x2goserver x2goserver-xsession
-}
-
-function install_chrome_remote_desktop {
-    container_exec wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
-    container_exec apt install -y ./google-chrome-stable_current_amd64.deb
-    container_exec rm google-chrome-stable_current_amd64.deb
-    container_exec wget -q https://dl.google.com/linux/direct/chrome-remote-desktop_current_amd64.deb
-    container_exec apt install -y ./chrome-remote-desktop_current_amd64.deb
-    container_exec rm chrome-remote-desktop_current_amd64.deb
+function install_remote_desktop {
+    install_packages_from_repo ppa:x2go/stable x2goserver x2goserver-xsession
+    install_packages_from_http_deb https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb \
+                               https://dl.google.com/linux/direct/chrome-remote-desktop_current_amd64.deb
 }
 
 function install_other_software {
-    install_package transmission amule
+    install_packages \
+        amule \
+        gedit \
+        openvpn \
+        telnet \
+        transmission
+}
+
+function install_dev_software {
+    install_packages \
+        autoconf \
+        bison \
+        build-essential \
+        flex \
+        geany \
+        gettext \
+        git \
+        gradle \
+        gvfs-bin \
+        libfuse-dev \
+        libglu1-mesa \
+        libjpeg-dev \
+        libpam0g-dev \
+        libssl-dev \
+        libtool \
+        libx11-dev \
+        libxfixes-dev \
+        libxml-parser-perl \
+        libxrandr-dev \ \
+        meld \
+        monodevelop \
+        nasm \
+        pkg-config \
+        protobuf-compiler \
+        python-libxml2 \
+        python-pip \
+        thrift-compiler \
+        visualvm \
+        xfonts-scalable \
+        xinput \
+        xorg \
+        xserver-xorg-dev \
+        xsltproc
+
+    # install_packages_from_repo ppa:webupd8team/sublime-text-3 sublime-text
+    # install_deb_from_http https://go.microsoft.com/fwlink/?LinkID=760868 vscode.deb
+    install_packages_from_http_deb https://release.gitkraken.com/linux/gitkraken-amd64.deb
+    install_packages_from_repo ppa:gophers/archive golang-1.10-go
+    install_package_from_http_script https://sh.rustup.rs -y
 }
 
 function build_container {
     create_container
     fix_bluetooth
     install_desktop
-    install_x2go
-    install_chrome_remote_desktop
+    install_remote_desktop
     install_other_software
+    install_dev_software
 
     if [ "$CREATE_BASELINE_SNAPSHOT" = true ]; then
         echo "Creating baseline snaphot"
