@@ -242,7 +242,7 @@ function install_dev_software {
         libxml-parser-perl \
         libxrandr-dev \ \
         meld \
-        monodevelop \
+        mono-complete \
         nasm \
         pkg-config \
         protobuf-compiler \
